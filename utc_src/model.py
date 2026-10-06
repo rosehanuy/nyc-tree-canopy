@@ -1,0 +1,365 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.inspection import permutation_importance
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, GroupKFold
+from sklearn.metrics import (classification_report, roc_auc_score,
+                              mean_squared_error, r2_score)
+from sklearn.metrics import precision_score, recall_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.base import clone
+import os
+
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+
+from sklearn.model_selection import cross_val_score
+import json
+
+import joblib
+import os
+from sklearn.metrics import mean_squared_error, r2_score
+import xarray as xr
+import rasterio
+
+
+from utc_src import config
+
+
+def train_clf_models(siteyear,train_df,test_same_year, test_other_year, feature_set,feature_cols):
+    import shap
+    X_train = train_df.loc[:,feature_cols]
+    y_train = train_df['canopy_binary']
+
+    X_test_sameyear = test_same_year.loc[:,feature_cols]
+    y_test_sameyear = test_same_year['canopy_binary']
+
+    X_test_otheryear = test_other_year.loc[:,feature_cols]
+    y_test_otheryear = test_other_year['canopy_binary']
+
+        
+    clf = RandomForestClassifier(n_jobs=-1,random_state=42)
+
+    clf.fit(X_train,y_train)
+
+    y_proba_sameyear = clf.predict_proba(X_test_sameyear)[:, 1]
+    y_proba_otheryear = clf.predict_proba(X_test_otheryear)[:, 1]
+   
+    os.makedirs(config.MODELS / siteyear, exist_ok=True)
+    joblib.dump({"clf_model":clf}, config.MODELS / siteyear / f'{siteyear}_{feature_set}_clf.joblib')
+
+    sameyear_auc = roc_auc_score(y_test_sameyear, y_proba_sameyear)
+    otheryear_auc = roc_auc_score(y_test_otheryear, y_proba_otheryear)
+ 
+    result_dict = {'train_year': siteyear,
+                    'feature_set':feature_set,
+                   'sameyear_auc': float(sameyear_auc),
+                   'otheryear_auc': float(otheryear_auc)}
+    
+    X_small = X_test_sameyear.sample(100, random_state=50)
+
+    explainer = shap.TreeExplainer(clf)
+
+    shap_values = explainer(X_small)
+
+    vals = shap_values.values[:,:,1]
+    mean_abs_shap = np.abs(vals).mean(axis=0)
+
+    shap_df = pd.DataFrame({
+        'feature': X_small.columns,
+        'mean_abs_shap': mean_abs_shap
+    }).sort_values('mean_abs_shap', ascending=False)
+
+    os.makedirs(config.MODELS / siteyear/ 'shap',exist_ok=True)
+    shap_df.to_csv(config.MODELS / siteyear / 'shap' / f'{siteyear}_clf_shap_{feature_set}.csv')
+
+    return result_dict
+
+def train_rgr_models(siteyear,train_df,test_same_year, test_other_year, feature_set,feature_cols):
+    import shap
+
+    X_train = train_df.loc[:,feature_cols]
+    y_train = train_df['canopy_pct']
+
+    X_test_sameyear = test_same_year.loc[:,feature_cols]
+    y_test_sameyear = test_same_year['canopy_pct']
+
+    X_test_otheryear = test_other_year.loc[:,feature_cols]
+    y_test_otheryear = test_other_year['canopy_pct']
+
+    rgr = RandomForestRegressor( n_estimators=100,
+    min_samples_leaf=5,
+    max_depth=20,
+    n_jobs=-1,
+    random_state=42)
+
+    rgr.fit(X_train,y_train)
+
+    os.makedirs(config.MODELS / siteyear, exist_ok=True)
+    joblib.dump({"rgr_model":rgr}, config.MODELS / siteyear / f'{siteyear}_{feature_set}_rgr.joblib')
+
+    y_pred_sameyear = rgr.predict(X_test_sameyear)
+    y_pred_otheryear = rgr.predict(X_test_otheryear)
+   
+    sameyear_rmse = np.sqrt(mean_squared_error(y_test_sameyear, y_pred_sameyear))
+    otheryear_rmse = np.sqrt(mean_squared_error(y_test_otheryear, y_pred_otheryear))
+    sameyear_r2 = r2_score(y_test_sameyear, y_pred_sameyear)
+    otheryear_r2 = r2_score(y_test_otheryear, y_pred_otheryear)
+
+    result_dict = {'train_year': siteyear,
+                    'feature_set':feature_set,
+                   'sameyear_rmse': float(sameyear_rmse),
+                   'otheryear_rmse': float(otheryear_rmse),
+                   'sameyear_r2': float(sameyear_r2),
+                   'otheryear_r2': float(otheryear_r2)}
+    
+    
+    X_small = X_test_sameyear.sample(100, random_state=50)
+
+    explainer = shap.TreeExplainer(rgr)
+
+    shap_values = explainer(X_small, check_additivity=False)
+
+    vals = shap_values.values
+    mean_abs_shap = np.abs(vals).mean(axis=0)
+
+    shap_df = pd.DataFrame({
+        'feature': X_small.columns,
+        'mean_abs_shap': mean_abs_shap
+    }).sort_values('mean_abs_shap', ascending=False)
+
+    os.makedirs(config.MODELS / siteyear/ 'shap',exist_ok=True)
+    shap_df.to_csv(config.MODELS / siteyear / 'shap'/ f'{siteyear}_rgr_shap_{feature_set}.csv')
+
+    return result_dict
+
+def compare_clf_models(feature_sets,output_label,train_df,test_same_year, test_other_year):
+    all_results = []
+    for feature_set, feature_cols in feature_sets.items():
+        results = compare_clf_models(siteyear=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols)
+        all_results.append(results)
+
+    results_df = pd.DataFrame(all_results)
+    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_clf_results.csv')
+
+def compare_rgr_models(feature_sets,output_label,train_df,test_same_year, test_other_year):
+    all_results = []
+    for feature_set, feature_cols in feature_sets.items():
+        results = compare_rgr_models(siteyear=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols)
+        all_results.append(results)
+
+    results_df = pd.DataFrame(all_results)
+    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_rgr_results.csv')
+
+
+def plot_shap_feature_importance(output_label,feature_sets):
+    os.makedirs(config.MODELS / output_label/ 'shap_plots',exist_ok=True)
+    for features in feature_sets.keys():
+        shap_df_rgr = pd.read_csv(config.MODELS / output_label / f'{output_label}_rgr_shap_{features}.csv')
+        shap_df_clf = pd.read_csv(config.MODELS/ output_label / f'{output_label}_clf_shap_{features}.csv')
+
+        top30 = shap_df_rgr.head(30)
+        plt.figure(figsize=(5, 7))
+        plt.barh(top30['feature'][::-1], top30['mean_abs_shap'][::-1])
+        plt.xlabel('Mean absolute SHAP value')
+        plt.title('Feature importance (SHAP) - Regressor')
+        plt.tight_layout()
+
+        plt.savefig(config.MODELS / output_label/ 'shap_plots' / f'{output_label}_rgr_shap_{features}.png')
+        plt.close()
+
+        top30 = shap_df_clf.head(30)
+        plt.figure(figsize=(5, 7))
+        plt.barh(top30['feature'][::-1], top30['mean_abs_shap'][::-1])
+        plt.xlabel('Mean absolute SHAP value')
+        plt.title('Feature importance (SHAP) - Classifier')
+        plt.tight_layout()
+    
+        plt.savefig(config.MODELS / output_label/ 'shap_plots' / f'{output_label}_clf_shap_{features}.png')
+        plt.close()
+
+
+
+def train_full_dataset_models(all_training_data,output_label,feature_cols,feature_set_name):
+
+    os.makedirs(config.MODELS / output_label,exist_ok=True)
+    
+    X = all_training_data[feature_cols]
+    y_binary = all_training_data['canopy_binary']
+    y_pct = all_training_data['canopy_pct']
+
+    print('Training classifier')
+    clf = RandomForestClassifier(n_jobs=-1,random_state=42)
+
+    clf.fit(X,y_binary)
+
+    print('Training regressor')
+    rgr = RandomForestRegressor( n_estimators=100,
+        min_samples_leaf=5,
+        max_depth=20,
+        n_jobs=-1,
+        random_state=42)
+
+    rgr.fit(X,y_pct)
+
+    joblib.dump({"clf_model":clf,"rgr_model":rgr,"input_features":feature_cols}, config.MODELS / output_label / f'{output_label}_{feature_set_name}_models.joblib')
+    print(f'Done. Trained models saved to : {config.MODELS} / {output_label} / {output_label}_{feature_set_name}_models.joblib')
+
+
+def train_oof_models(train_df, output_label,feature_cols, feature_set_name, k, seed=42):
+    os.makedirs(config.MODELS / output_label,exist_ok=True)
+    # add block id col to train df
+    train_df['block_id'] = train_df['block_row'].astype(str) + '_' + train_df['block_col'].astype(str)
+    # assign each spatial block to a fold 
+    blocks = train_df['block_id'].unique()
+    rng = np.random.default_rng(seed)
+    fold_of_block = {b: i % k for i, b in enumerate(rng.permutation(blocks))}
+    train_df = train_df.assign(fold=train_df['block_id'].map(fold_of_block))
+
+    # make fold array: assign pixels to folds based on fold_of_block dictionary
+    # read in existing block map for size refernce
+    block_map = np.load(config.DATA_DIR / 'train_test_blocks.npz')
+    block_map = block_map['arr_0']
+
+    block_size = 100
+    ny, nx = block_map.shape
+    n_blocks_y = ny // block_size   # drop partial edge tiles
+    n_blocks_x = nx // block_size
+
+    fold_array = np.full((ny, nx), 7, dtype=np.uint16)
+    for by in range(n_blocks_y):
+        for bx in range(n_blocks_x):
+            f = fold_of_block.get(f'{by}_{bx}')
+            if f is None:
+                continue
+            y0, y1 = by * block_size, (by + 1) * block_size
+            x0, x1 = bx * block_size, (bx + 1) * block_size
+            fold_array[y0:y1, x0:x1] = f
+
+    base_clf = RandomForestClassifier(n_jobs=-1,random_state=42)
+    base_rgr = RandomForestRegressor( n_estimators=100,   
+                                            min_samples_leaf=5,
+                                            max_depth=20,
+                                            n_jobs=-1,
+                                            random_state=42)
+
+    print(f'Training {k} OOF models')
+    models = {}
+    for f in range(k):
+        print(f'Classifier {f+1}')
+        tr = train_df[train_df.fold != f]  # leave current fold out of training
+        clf = clone(base_clf).fit(tr[feature_cols], tr['canopy_binary'])
+        print(f'Regressor {f+1}')
+        rgr = clone(base_rgr).fit(tr[feature_cols], tr['canopy_pct'])
+        models[f] = (clf, rgr)
+
+    joblib.dump({'models':models,'fold':fold_of_block,'fold_array':fold_array,"input_features":feature_cols},config.MODELS / output_label / f'{output_label}_{feature_set_name}_OOF_models.joblib' )
+    print(f'Done. OOF models saved to {config.MODELS} / {output_label} / {output_label}_{feature_set_name}_OOF_models.joblib')
+
+############# predict using pre-trained model ##############################
+
+
+def predict_block(block,clf,rgr):
+
+    n_band, bh, bw = block.shape
+    pixels = block.reshape(n_band,-1).T # (pixels, bands)
+
+    valid = np.all(np.isfinite(pixels),axis=1)
+    #tc_binary = np.full(bh * bw, np.nan)
+    tc_percent = np.full(bh * bw, np.nan)
+
+    if valid.any():
+        clf_preds = clf.predict(pixels[valid])
+        #clf_preds = (clf_probs >= clf_thresh).astype(int)
+        #tc_binary[valid] = clf_preds
+
+        tc_percent[valid] = 0  ## set to zero not nan
+
+        canopy_mask = valid.copy()
+        canopy_mask[valid] = (clf_preds == 1)
+
+        if canopy_mask.any():
+            tc_percent[canopy_mask] = rgr.predict(pixels[canopy_mask])
+    
+    return tc_percent.reshape(bh,bw)
+
+def predict_block_oof(chunk, fold_chunk, models):
+    out = np.full(chunk.shape[1:], np.nan, dtype=np.float32)
+    for f in np.unique(fold_chunk):
+        if f == 7 :
+            continue                # excluded pixels
+        else:
+            clf, rgr = models[int(f)]           # select the model that held this fold out of training
+        m = (fold_chunk == f)
+        if not m.any():
+            continue
+        # predict only this fold's pixels within the chunk
+        sub = np.where(m[None, :, :], chunk, np.nan)
+        pred = predict_block(sub, clf, rgr)      # same function as non-oof preds
+        out[m] = pred[m]
+    return out
+
+
+
+
+def predict_tree_canopy(output_label,model_label, model_feature_set,out_of_fold):
+
+    input_data = xr.open_zarr(config.DATA_DIR / output_label / f'{output_label}_seasonalstats.zarr')['features']
+    input_data = input_data.assign_coords(band=[f"band_{b}" for b in input_data.coords["band"].values])
+
+    if not out_of_fold:
+        model_items = joblib.load(config.MODELS / model_label / f'{model_label}_{model_feature_set}_models.joblib')
+        clf = model_items['clf_model']
+        rgr = model_items['rgr_model']
+        features = model_items['input_features']
+    else:
+        oof_items = joblib.load(config.MODELS / model_label / f'{model_label}_{model_feature_set}_OOF_models.joblib')
+        oof_models = oof_items['models']
+        fold_raster = xr.DataArray(oof_items['fold_array'],dims=['y','x'],coords={'y':input_data.y,'x':input_data.x})
+        features = oof_items['input_features']
+
+    
+    input_data = input_data.sel(band=features)
+    input_data = input_data.rio.write_crs(26918).rio.set_spatial_dims( x_dim="x",y_dim="y").rio.write_coordinate_system()
+
+    height, width = input_data.shape[1], input_data.shape[2]
+    transform = input_data.rio.transform()
+    crs = input_data.rio.crs
+    chunk_y = 256
+    chunk_x = 256
+
+    dest_name = f'{output_label}_canopy_from_{model_label}_{model_feature_set}_model.tif' if not out_of_fold else f'{output_label}_canopy_from_{model_label}_{model_feature_set}_OOF_model.tif'
+
+    with rasterio.open(
+        config.MODEL_OUTPUTS / dest_name,
+        'w', driver='GTiff', height=height, width=width,
+        count=1, dtype=np.float32, crs=crs,
+        transform=transform, compress='lzw'
+    ) as dst:
+        for y_start in range(0, height, chunk_y):
+            for x_start in range(0, width, chunk_x):
+                y_end = min(y_start + chunk_y, height)
+                x_end = min(x_start + chunk_x, width)
+
+                chunk = input_data.isel(
+                    y=slice(y_start, y_end),
+                    x=slice(x_start, x_end)
+                ).compute().values
+
+                if not out_of_fold:
+                    result = predict_block(
+                        chunk, clf=clf,rgr=rgr
+                    )
+                else:
+                    fold_chunk = fold_raster.isel(y=slice(y_start, y_end), x=slice(x_start, x_end)).values
+                    result = predict_block_oof(chunk, fold_chunk, oof_models)
+
+                window = rasterio.windows.Window(
+                    x_start, y_start,
+                    x_end - x_start, y_end - y_start
+                )
+                dst.write(result.astype(np.float32), 1, window=window)
+                
+    print("Done")
