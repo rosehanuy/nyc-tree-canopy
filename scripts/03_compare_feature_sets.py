@@ -1,13 +1,16 @@
 
 from utc_src import config
-from utc_src.model import compare_clf_models, compare_rgr_models, plot_shap_feature_importance
+from utc_src.model import compare_clf_models, compare_rgr_models
+from utc_src.viz import plot_feature_comparison,  plot_shap_feature_importance
 import pandas as pd
 
 ### set inputs
 output_label_1= 'nyc18'
+year_1 = 2018
 output_label_2 = 'nyc21'
+year_2 = 2021
 
-n_seeds = 10  ### number of model iterations to evaluate
+n_seeds = 3  ### number of model iterations to evaluate
 shap_n = 200  ### size of sample to derive shap values
 
 def main():
@@ -50,8 +53,9 @@ def main():
     plot_shap_feature_importance(output_label=output_label_2,feature_sets=feature_sets)
 
     ### add feature comparison bar plot
+    plot_feature_comparison(output_label_1=output_label_1,output_label_2=output_label_2,year_1=year_1,year_2=year_2)
 
-    print(f'Done. Results saved to:\n{config.MODELS} / {output_label_1}\n{config.MODELS} / {output_label_2}')     
+    print(f'Done. Results saved to:\n{config.MODELS} / {output_label_1}\n{config.MODELS} / {output_label_2}\n{config.Figures}')     
 
 if __name__=='__main__':
     main()

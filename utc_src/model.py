@@ -51,6 +51,7 @@ def train_clf_models(output_label, train_df, test_same_year, test_other_year,
     same_aucs, other_aucs, shap_cols = [], [], []
     
     for seed in range(n_seeds):
+        print(seed)
         clf = RandomForestClassifier(n_jobs=-1, random_state=seed)
         clf.fit(X_train, y_train)
 
@@ -85,7 +86,8 @@ def train_clf_models(output_label, train_df, test_same_year, test_other_year,
 def compare_clf_models(feature_sets,output_label,train_df,test_same_year, test_other_year,n_seeds,shap_n):
     all_results = []
     for feature_set, feature_cols in feature_sets.items():
-        results = train_clf_models(siteyear=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols,n_seeds=n_seeds,shap_n=shap_n)
+        print(feature_set)
+        results = train_clf_models(output_label=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols,n_seeds=n_seeds,shap_n=shap_n)
         all_results.append(results)
 
     results_df = pd.DataFrame(all_results)
@@ -182,38 +184,15 @@ def train_rgr_models(output_label,train_df,test_same_year, test_other_year, feat
 def compare_rgr_models(feature_sets,output_label,train_df,test_same_year, test_other_year,n_seeds,shap_n):
     all_results = []
     for feature_set, feature_cols in feature_sets.items():
-        results = train_rgr_models(siteyear=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols,n_seeds=n_seeds,shap_n=shap_n)
+        print(feature_set)
+        results = train_rgr_models(output_label=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols,n_seeds=n_seeds,shap_n=shap_n)
         all_results.append(results)
 
     results_df = pd.DataFrame(all_results)
     results_df.to_csv(config.MODELS/ output_label / f'{output_label}_rgr_results.csv')
 
 
-def plot_shap_feature_importance(output_label,feature_sets):
-    os.makedirs(config.MODELS / output_label/ 'shap_plots',exist_ok=True)
-    for features in feature_sets.keys():
-        shap_df_rgr = pd.read_csv(config.MODELS / output_label / f'{output_label}_rgr_shap_{features}_mean.csv')
-        shap_df_clf = pd.read_csv(config.MODELS/ output_label / f'{output_label}_clf_shap_{features}_mean.csv')
 
-        top30 = shap_df_rgr.head(30)
-        plt.figure(figsize=(5, 7))
-        plt.barh(top30['feature'][::-1], top30['mean_abs_shap'][::-1])
-        plt.xlabel('Mean absolute SHAP value')
-        plt.title('Feature importance (SHAP) - Regressor')
-        plt.tight_layout()
-
-        plt.savefig(config.MODELS / output_label/ 'shap_plots' / f'{output_label}_rgr_shap_{features}.png')
-        plt.close()
-
-        top30 = shap_df_clf.head(30)
-        plt.figure(figsize=(5, 7))
-        plt.barh(top30['feature'][::-1], top30['mean_abs_shap'][::-1])
-        plt.xlabel('Mean absolute SHAP value')
-        plt.title('Feature importance (SHAP) - Classifier')
-        plt.tight_layout()
-    
-        plt.savefig(config.MODELS / output_label/ 'shap_plots' / f'{output_label}_clf_shap_{features}.png')
-        plt.close()
 
 
 

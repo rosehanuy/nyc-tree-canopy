@@ -8,6 +8,7 @@ DATA_DIR = ROOT / 'data'
 MODEL_OUTPUTS = ROOT / 'model_outputs'
 MODELS = ROOT / 'models'
 RESAMP = ROOT / 'model_outputs' / 'resamp'
+FIGURES = ROOT / 'figs'
 
 BOUNDARY = DATA_DIR / 'nyc_boundary.gpkg'
 LIDAR_LC_2017 = DATA_DIR / 'lidar_landcover' / 'Land_Cover' / 'NYC_2017_LiDAR_LandCover.img'
