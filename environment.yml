@@ -1,0 +1,47 @@
+name: urban-tree-canopy
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - numpy=2.2
+
+  # geospatial
+  - gdal
+  - rasterio
+  - rioxarray
+  - geopandas
+  - shapely
+  - opencv
+
+  # Sentinel-2 access (Microsoft Planetary Computer)
+  - pystac-client
+  - planetary-computer
+  - stackstac
+  - requests
+  - urllib3
+
+  # arrays, storage, parallel processing
+  - xarray
+  - zarr
+  - dask
+  - distributed
+  - bokeh            # needed for the Dask dashboard link printed by scripts 01-02
+  - pandas
+  - pyarrow          # for reading/writing the train/test .parquet files
+  - tqdm
+
+  # modelling: scikit-learn pinned to the version that trained the published models
+  - scikit-learn=1.8.0
+  - joblib
+  - shap
+
+  # plotting and notebooks
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - ipykernel
+
+  - pip
+  - pip:
+      - -e .          # installs the utc_src package from this repo
