@@ -7,6 +7,9 @@ import pandas as pd
 output_label_1= 'nyc18'
 output_label_2 = 'nyc21'
 
+n_seeds = 10  ### number of model iterations to evaluate
+shap_n = 200  ### size of sample to derive shap values
+
 def main():
     ## read in classifier train/test datasets
     train_clf_1 = pd.read_parquet(config.DATA_DIR / output_label_1 / f'{output_label_1}_train_df_clf.parquet')
@@ -30,11 +33,12 @@ def main():
                     'deltas_only':[c for c in band_cols if c.endswith('delta')],
                     'median_season_only':[c for c in band_cols if c.endswith('season_median')]}
 
+    ## train ten iterations on each feature set and take the mean and std of performance metrics (AUC for classifiers, R2 and RMSE for regressors)
     print(f'Training classifiers for {output_label_1}')
-    compare_clf_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_clf_1,test_same_year=test_clf_1,test_other_year=test_clf_2)
+    compare_clf_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_clf_1,test_same_year=test_clf_1,test_other_year=test_clf_2,n_seeds=n_seeds,shap_n=shap_n)
 
     print(f'Training classifiers for {output_label_2}')
-    compare_clf_models(feature_sets=feature_sets,output_label=output_label_2,train_df=train_clf_2,test_same_year=test_clf_2,test_other_year=test_clf_1)
+    compare_clf_models(feature_sets=feature_sets,output_label=output_label_2,train_df=train_clf_2,test_same_year=test_clf_2,test_other_year=test_clf_1,n_seeds=n_seeds,shap_n=shap_n)
 
     print(f'Training regressors for {output_label_1}')
     compare_rgr_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_rgr_1,test_same_year=test_rgr_1,test_other_year=test_rgr_2)
@@ -44,6 +48,8 @@ def main():
 
     plot_shap_feature_importance(output_label=output_label_1,feature_sets=feature_sets)
     plot_shap_feature_importance(output_label=output_label_2,feature_sets=feature_sets)
+
+    ### add feature comparison bar plot
 
     print(f'Done. Results saved to:\n{config.MODELS} / {output_label_1}\n{config.MODELS} / {output_label_2}')     
 
