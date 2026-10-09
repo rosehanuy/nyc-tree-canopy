@@ -10,9 +10,9 @@ import os
 LABELS = {
     'spring': 'Spring', 'summer': 'Summer', 'fall': 'Fall',
     'spring_summer': 'Spring +\nSummer', 'spring_fall': 'Spring +\nFall', 'summer_fall': 'Summer +\nFall',
-    'all_seasons': 'All Three\nSeasons',
+    'all_seasons': 'Spring +\nSummer +\nFall',
     'all_vars': 'All\nVariables', 'medians_only': 'Medians', 'deltas_only': 'Deltas',
-    'iqr_only': 'IQR', 'medians_deltas': 'Medians\n + Deltas', 'median_season_only': 'Growing\nSeason\nMedians',
+    'iqr_only': 'IQR', 'medians_deltas': 'Medians\n + Deltas', 'median_season_only': 'Growing\nSeason',
 }
 
 

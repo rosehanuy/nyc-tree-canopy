@@ -10,17 +10,6 @@ Workflow
    models/<label>/<label>_<clf|rgr>_<metric>_<sameyear|otheryear>_boot.parquet  (raw bootstrap scores)
 3. paired_differences() gives the CI of the difference between each feature set and a reference.
 
-Why blocks: pixels within a 100 x 100 px block are spatially correlated, so the block
-(not the pixel) is the independent sampling unit. Resampling pixels would give CIs that
-are too narrow.
-
-Why paired: every feature set is scored on the same bootstrap resamples, so differences
-between feature sets are computed resample by resample. This is much more sensitive than
-checking whether two separate CIs overlap.
-
-Implementation note: a resample is applied as integer sample weights (how many times each
-block was drawn). Weighted AUC / R2 / RMSE with integer weights are identical to computing
-the metric on the duplicated data, but avoid building large index arrays.
 """
 import numpy as np
 import pandas as pd
