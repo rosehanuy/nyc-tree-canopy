@@ -11,7 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.base import clone
 import os
-
+import shap
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
@@ -29,16 +29,9 @@ from utc_src import config
 
 
 def train_clf_models(output_label, train_df, test_same_year, test_other_year,
-                     feature_set, n_seeds, shap_n):
-    import shap
-    band_cols = [c for c in train_df.columns if c.startswith('band')]
-    feature_sets = {
-        'all_vars':            band_cols,
-        'medians_only':        [c for c in band_cols if c.endswith('median')],
-        'deltas_only':         [c for c in band_cols if c.endswith('delta')],
-        'median_season_only':  [c for c in band_cols if c.endswith('season_median')],
-    }
-    feature_cols = feature_sets[feature_set]
+                     feature_set, feature_cols,n_seeds, shap_n):
+    
+    
 
     X_train = train_df[feature_cols]
     y_train = train_df['canopy_binary']
@@ -91,20 +84,12 @@ def compare_clf_models(feature_sets,output_label,train_df,test_same_year, test_o
         all_results.append(results)
 
     results_df = pd.DataFrame(all_results)
-    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_clf_results.csv')
+    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_clf_results_means.csv')
 
 
-def train_rgr_models(output_label,train_df,test_same_year, test_other_year, feature_set,n_seeds,shap_n):
+def train_rgr_models(output_label,train_df,test_same_year, test_other_year, feature_set,feature_cols,n_seeds,shap_n):
     import shap
 
-    band_cols = [c for c in train_df.columns if c.startswith('band')]
-    
-    feature_sets = {'all_vars': band_cols,
-    'medians_only' :[c for c in band_cols if c.endswith('median')],
-    'deltas_only':[c for c in band_cols if c.endswith('delta')],
-    'median_season_only':[c for c in band_cols if c.endswith('season_median')]}
-
-    feature_cols = feature_sets[feature_set]
 
     X_train = train_df.loc[:,feature_cols]
     y_train = train_df['canopy_pct']
@@ -189,10 +174,7 @@ def compare_rgr_models(feature_sets,output_label,train_df,test_same_year, test_o
         all_results.append(results)
 
     results_df = pd.DataFrame(all_results)
-    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_rgr_results.csv')
-
-
-
+    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_rgr_results_means.csv')
 
 
 

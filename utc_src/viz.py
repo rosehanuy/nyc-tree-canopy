@@ -1,4 +1,4 @@
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from matplotlib.patches import Patch
@@ -9,8 +9,12 @@ import os
 def read_in_feature_comp_results(output_label):
     c = pd.read_csv(config.MODELS / output_label / f'{output_label}_clf_results_means.csv')
     c = c.rename(columns={'sameyear_auc_mean':'sameyear','otheryear_auc_mean':'otheryear','sameyear_auc_std':'sameyear_std','otheryear_auc_std':'otheryear_std'})
-    r = pd.read_csv(root / 'models' / output_label / f'{output_label}_rgr_results_means.csv')
+    r = pd.read_csv(config.MODELS / output_label / f'{output_label}_rgr_results_means.csv')
     r = r.rename(columns={'sameyear_r2_mean':'sameyear','otheryear_r2_mean':'otheryear','sameyear_r2_std':'sameyear_std','otheryear_r2_std':'otheryear_std'})
+
+    order = ['all_vars', 'medians_only', 'deltas_only', 'median_season_only']
+    c = c.set_index('feature_set').loc[order].reset_index()
+    r = r.set_index('feature_set').loc[order].reset_index()
     return c, r
 
 def plot_feature_comparison(output_label_1, output_label_2, year_1, year_2):
@@ -70,7 +74,8 @@ def plot_feature_comparison(output_label_1, output_label_2, year_1, year_2):
         ax.set_xticks(x)
         ax.set_xticklabels(feature_sets, fontsize=9, ha='center')
     plt.tight_layout()
-
+    
+    os.makedirs(config.FIGURES, exist_ok=True)
     plt.savefig(config.FIGURES / f'feature_set_comparison_{output_label_1}_{output_label_2}.png')
     plt.close()
 

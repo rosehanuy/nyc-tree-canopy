@@ -10,7 +10,7 @@ year_1 = 2018
 output_label_2 = 'nyc21'
 year_2 = 2021
 
-n_seeds = 3  ### number of model iterations to evaluate
+n_seeds = 10  ### number of model iterations to evaluate
 shap_n = 200  ### size of sample to derive shap values
 
 def main():
@@ -36,18 +36,18 @@ def main():
                     'deltas_only':[c for c in band_cols if c.endswith('delta')],
                     'median_season_only':[c for c in band_cols if c.endswith('season_median')]}
 
-    ## train ten iterations on each feature set and take the mean and std of performance metrics (AUC for classifiers, R2 and RMSE for regressors)
-    print(f'Training classifiers for {output_label_1}')
+    # ## train ten iterations on each feature set and take the mean and std of performance metrics (AUC for classifiers, R2 and RMSE for regressors)
+    # print(f'Training classifiers for {output_label_1}')
     compare_clf_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_clf_1,test_same_year=test_clf_1,test_other_year=test_clf_2,n_seeds=n_seeds,shap_n=shap_n)
 
     print(f'Training classifiers for {output_label_2}')
     compare_clf_models(feature_sets=feature_sets,output_label=output_label_2,train_df=train_clf_2,test_same_year=test_clf_2,test_other_year=test_clf_1,n_seeds=n_seeds,shap_n=shap_n)
 
     print(f'Training regressors for {output_label_1}')
-    compare_rgr_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_rgr_1,test_same_year=test_rgr_1,test_other_year=test_rgr_2)
+    compare_rgr_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_rgr_1,test_same_year=test_rgr_1,test_other_year=test_rgr_2,n_seeds=n_seeds,shap_n=shap_n)
 
     print(f'Training regressors for {output_label_2}')
-    compare_rgr_models(feature_sets=feature_sets,output_label=output_label_2,train_df=train_rgr_2,test_same_year=test_rgr_2,test_other_year=test_rgr_1)
+    compare_rgr_models(feature_sets=feature_sets,output_label=output_label_2,train_df=train_rgr_2,test_same_year=test_rgr_2,test_other_year=test_rgr_1,n_seeds=n_seeds,shap_n=shap_n)
 
     plot_shap_feature_importance(output_label=output_label_1,feature_sets=feature_sets)
     plot_shap_feature_importance(output_label=output_label_2,feature_sets=feature_sets)
@@ -55,7 +55,7 @@ def main():
     ### add feature comparison bar plot
     plot_feature_comparison(output_label_1=output_label_1,output_label_2=output_label_2,year_1=year_1,year_2=year_2)
 
-    print(f'Done. Results saved to:\n{config.MODELS} / {output_label_1}\n{config.MODELS} / {output_label_2}\n{config.Figures}')     
+    print(f'Done. Results saved to:\n{config.MODELS} / {output_label_1}\n{config.MODELS} / {output_label_2}\n{config.FIGURES}')     
 
 if __name__=='__main__':
     main()
