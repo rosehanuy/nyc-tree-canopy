@@ -28,154 +28,67 @@ import rasterio
 from utc_src import config
 
 
+from utc_src.evaluate import prediction_frame
+
 def train_clf_models(output_label, train_df, test_same_year, test_other_year,
-                     feature_set, feature_cols,n_seeds, shap_n):
-    
-    
+                     feature_set, feature_cols, shap_n, seed=42):
+    os.makedirs(config.MODELS / output_label / 'shap', exist_ok=True)
+    os.makedirs(config.MODELS / output_label,exist_ok=True)
+    clf = RandomForestClassifier(n_jobs=-1, random_state=seed)
+    clf.fit(train_df[feature_cols], train_df['canopy_binary'])
 
-    X_train = train_df[feature_cols]
-    y_train = train_df['canopy_binary']
-    X_test_same,  y_test_same  = test_same_year[feature_cols],  test_same_year['canopy_binary']
-    X_test_other, y_test_other = test_other_year[feature_cols], test_other_year['canopy_binary']
+    preds = {'sameyear':  clf.predict_proba(test_same_year[feature_cols])[:, 1],
+             'otheryear': clf.predict_proba(test_other_year[feature_cols])[:, 1]}
 
-    # take sample for shap once so it's the same for every iteration
-    X_small = X_test_same.sample(min(shap_n, len(X_test_same)), random_state=50)
-
-    same_aucs, other_aucs, shap_cols = [], [], []
-    
-    for seed in range(n_seeds):
-        print(seed)
-        clf = RandomForestClassifier(n_jobs=-1, random_state=seed)
-        clf.fit(X_train, y_train)
-
-        same_aucs.append(roc_auc_score(y_test_same,  clf.predict_proba(X_test_same)[:, 1]))
-        other_aucs.append(roc_auc_score(y_test_other, clf.predict_proba(X_test_other)[:, 1]))
-
-        vals = shap.TreeExplainer(clf)(X_small).values[:, :, 1]
-        shap_cols.append(np.abs(vals).mean(axis=0))   # (n_features,) per seed
-        last_clf = clf
-
-    same_aucs, other_aucs = np.array(same_aucs), np.array(other_aucs)
-    shap_mat = np.vstack(shap_cols)                   # (n_seeds, n_features)
-
-   
-    shap_df = (pd.DataFrame({
-        'feature': X_small.columns,
-        'mean_abs_shap': shap_mat.mean(axis=0),
-        'std_abs_shap':  shap_mat.std(axis=0),
-    }).sort_values('mean_abs_shap', ascending=False))
-    shap_df.to_csv(config.MODELS / output_label / f'{output_label}_clf_shap_{feature_set}_mean.csv', index=False)
-
-    return {
-        'train_year':       output_label,
-        'feature_set':      feature_set,
-        'n_seeds':          n_seeds,
-        'sameyear_auc_mean':  float(same_aucs.mean()),
-        'sameyear_auc_std':   float(same_aucs.std()),
-        'otheryear_auc_mean': float(other_aucs.mean()),
-        'otheryear_auc_std':  float(other_aucs.std()),
-    }
-
-def compare_clf_models(feature_sets,output_label,train_df,test_same_year, test_other_year,n_seeds,shap_n):
-    all_results = []
-    for feature_set, feature_cols in feature_sets.items():
-        print(feature_set)
-        results = train_clf_models(output_label=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols,n_seeds=n_seeds,shap_n=shap_n)
-        all_results.append(results)
-
-    results_df = pd.DataFrame(all_results)
-    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_clf_results_means.csv')
+    X_small = test_same_year[feature_cols].sample(min(shap_n, len(test_same_year)), random_state=50)
+    vals = shap.TreeExplainer(clf)(X_small).values[:, :, 1]
+    (pd.DataFrame({'feature': feature_cols, 'mean_abs_shap': np.abs(vals).mean(axis=0)})
+       .sort_values('mean_abs_shap', ascending=False)
+       .to_csv(config.MODELS / output_label / 'shap' / f'{output_label}_clf_shap_{feature_set}_mean.csv', index=False))
+    return preds
 
 
-def train_rgr_models(output_label,train_df,test_same_year, test_other_year, feature_set,feature_cols,n_seeds,shap_n):
-    import shap
+def compare_clf_models(feature_sets, output_label, train_df, test_same_year, test_other_year, shap_n):
+    preds = {'sameyear':  prediction_frame(test_same_year,  'canopy_binary'),
+             'otheryear': prediction_frame(test_other_year, 'canopy_binary')}
+    for name, cols in feature_sets.items():
+        print(name)
+        p = train_clf_models(output_label, train_df, test_same_year, test_other_year,
+                             feature_set=name, feature_cols=cols, shap_n=shap_n)
+        for which in preds:
+            preds[which][name] = p[which]  ## adds column of predictions to df already containing block ids and y_true
+    for which, df in preds.items():
+        df.to_parquet(config.MODELS / output_label / f'{output_label}_clf_preds_{which}.parquet', index=False)
+
+def train_rgr_models(output_label, train_df, test_same_year, test_other_year,
+                     feature_set, feature_cols, shap_n, seed=42):
+    os.makedirs(config.MODELS / output_label / 'shap', exist_ok=True)
+    os.makedirs(config.MODELS / output_label,exist_ok=True)
+    rgr = RandomForestRegressor(n_estimators=100, min_samples_leaf=5, max_depth=20, n_jobs=-1, random_state=seed)
+    rgr.fit(train_df[feature_cols], train_df['canopy_pct'])
+
+    preds = {'sameyear':  rgr.predict(test_same_year[feature_cols]),
+             'otheryear': rgr.predict(test_other_year[feature_cols])}
+
+    X_small = test_same_year[feature_cols].sample(min(shap_n, len(test_same_year)), random_state=50)
+    vals = shap.TreeExplainer(rgr)(X_small, check_additivity=False).values
+    (pd.DataFrame({'feature': feature_cols, 'mean_abs_shap': np.abs(vals).mean(axis=0)})
+       .sort_values('mean_abs_shap', ascending=False)
+       .to_csv(config.MODELS / output_label / 'shap' / f'{output_label}_rgr_shap_{feature_set}_mean.csv', index=False))
+    return preds
 
 
-    X_train = train_df.loc[:,feature_cols]
-    y_train = train_df['canopy_pct']
-
-    X_test_sameyear = test_same_year.loc[:,feature_cols]
-    y_test_sameyear = test_same_year['canopy_pct']
-
-    X_test_otheryear = test_other_year.loc[:,feature_cols]
-    y_test_otheryear = test_other_year['canopy_pct']
-
-    X_small = X_test_sameyear.sample(min(shap_n, len(X_test_sameyear)), random_state=50)
-
-    same_r2, same_rmse, other_r2, other_rmse, shap_cols = [], [], [], [], []
-
-    for seed in range(n_seeds):
-        print(seed)
-        rgr = RandomForestRegressor(n_estimators=100,
-        min_samples_leaf=5,
-        max_depth=20,
-        n_jobs=-1,
-        random_state=seed)
-
-        rgr.fit(X_train,y_train)
-
-        y_pred_sameyear = rgr.predict(X_test_sameyear)
-        y_pred_otheryear = rgr.predict(X_test_otheryear)
-   
-        sameyear_rmse = np.sqrt(mean_squared_error(y_test_sameyear, y_pred_sameyear))
-        otheryear_rmse = np.sqrt(mean_squared_error(y_test_otheryear, y_pred_otheryear))
-        sameyear_r2 = r2_score(y_test_sameyear, y_pred_sameyear)
-        otheryear_r2 = r2_score(y_test_otheryear, y_pred_otheryear)
-
-        same_r2.append(sameyear_r2)
-        other_r2.append(otheryear_r2)
-        same_rmse.append(sameyear_rmse)
-        other_rmse.append(otheryear_rmse)
-
-        if seed < 5:
-            explainer = shap.TreeExplainer(rgr)
-        
-            shap_values = explainer(X_small, check_additivity=False)
-        
-            vals = shap_values.values
-            mean_abs_shap = np.abs(vals).mean(axis=0)
-
-            shap_cols.append(mean_abs_shap)
-        
-         
-    same_r2, other_r2 = np.array(same_r2), np.array(other_r2)
-    same_rmse, other_rmse = np.array(same_rmse), np.array(other_rmse)
-    shap_mat = np.vstack(shap_cols) 
-
-    result_dict = {'train_year': output_label,
-                    'feature_set':feature_set,
-                   'sameyear_rmse_mean': float(same_rmse.mean()),
-                   'sameyear_rmse_std': float(same_rmse.std()),
-                   'otheryear_rmse_mean': float(other_rmse.mean()),
-                   'otheryear_rmse_std': float(other_rmse.std()),
-                   'sameyear_r2_mean': float(same_r2.mean()),
-                   'sameyear_r2_std': float(same_r2.std()),
-                   'otheryear_r2_mean': float(other_r2.mean()),
-                   'otheryear_r2_std': float(other_r2.std())}
-        
-    shap_df = (pd.DataFrame({
-        'feature': X_small.columns,
-        'mean_abs_shap': shap_mat.mean(axis=0),
-        'std_abs_shap':  shap_mat.std(axis=0),
-    }).sort_values('mean_abs_shap', ascending=False))
-
-    shap_df.to_csv(config.MODELS/ output_label/ f'{output_label}_rgr_shap_{feature_set}_mean.csv')
-   
-
-    return result_dict
-
-
-
-def compare_rgr_models(feature_sets,output_label,train_df,test_same_year, test_other_year,n_seeds,shap_n):
-    all_results = []
-    for feature_set, feature_cols in feature_sets.items():
-        print(feature_set)
-        results = train_rgr_models(output_label=output_label,train_df=train_df,test_same_year=test_same_year,test_other_year=test_other_year,feature_set=feature_set,feature_cols=feature_cols,n_seeds=n_seeds,shap_n=shap_n)
-        all_results.append(results)
-
-    results_df = pd.DataFrame(all_results)
-    results_df.to_csv(config.MODELS/ output_label / f'{output_label}_rgr_results_means.csv')
-
+def compare_rgr_models(feature_sets, output_label, train_df, test_same_year, test_other_year, shap_n):
+    preds = {'sameyear':  prediction_frame(test_same_year,  'canopy_pct'),
+             'otheryear': prediction_frame(test_other_year, 'canopy_pct')}
+    for name, cols in feature_sets.items():
+        print(name)
+        p = train_rgr_models(output_label, train_df, test_same_year, test_other_year,
+                             feature_set=name, feature_cols=cols, shap_n=shap_n)
+        for which in preds:
+            preds[which][name] = p[which]  ## adds column of predictions to df already containing block ids and y_true
+    for which, df in preds.items():
+        df.to_parquet(config.MODELS / output_label / f'{output_label}_rgr_preds_{which}.parquet', index=False)
 
 
 def train_full_dataset_models(all_training_data,output_label,feature_cols,feature_set_name):
