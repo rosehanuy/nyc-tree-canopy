@@ -159,3 +159,148 @@ def compile_differences(output_labels, comparisons, alpha=0.05):
     out = pd.concat(rows, ignore_index=True)
     out['ci_excludes_zero'] = (out['ci_low'] > 0) | (out['ci_high'] < 0)
     return out
+
+######### resample tree canopy estimates and evaluate against lidar ########################
+
+import os
+import numpy as np
+import pandas as pd
+import rioxarray
+from affine import Affine
+from sklearn.metrics import mean_squared_error, r2_score
+
+from utc_src import config
+
+
+def _metrics(lidar, pred):
+    """Accuracy metrics for paired arrays (NaNs dropped)."""
+    ok = np.isfinite(lidar) & np.isfinite(pred)
+    l, p = lidar[ok], pred[ok]
+    err = p - l
+    return {'n_cells': int(ok.sum()),
+            'bias': float(err.mean()),
+            'mae': float(np.abs(err).mean()),
+            'rmse': float(np.sqrt(mean_squared_error(l, p))),
+            'r2': float(r2_score(l, p))}
+
+
+def _coarse_coords(src, factor, nx, ny):
+    """Correct cell-centre coordinates and transform for a grid `factor` times coarser than `src`,
+    anchored at src's top-left corner (padded edge cells get full-size coordinates too)."""
+    tf = src.rio.transform()
+    new_tf = tf * Affine.scale(factor)
+    x = new_tf.c + (np.arange(nx) + 0.5) * new_tf.a
+    y = new_tf.f + (np.arange(ny) + 0.5) * new_tf.e
+    return x, y, new_tf
+
+
+def resample_and_evaluate(output_label, model_label, OOF, train_features, scales,
+                          min_coverage=0.75, write_scales=(30, 100, 500, 1000)):
+    """Aggregate 10 m predictions and lidar canopy to coarser square grids and compute accuracy.
+
+    Coarse cell value = mean over the 10 m pixels that are valid in BOTH rasters.
+    Cells with fewer than `min_coverage` x (pixels per cell) valid pixels are excluded.
+    Also reports rmse_indep: the RMSE expected at each scale if 10 m errors were spatially
+    independent, sqrt(bias^2 + sigma^2 * mean(1/n_valid)), for the RMSE-vs-scale reference curve.
+    """
+    t = '_OOF_' if OOF else '_'
+    name = f'{output_label}_canopy_from_{model_label}_{train_features}{t}model'
+    # masked=True turns each file's nodata value into NaN (otherwise e.g. -9999 counts as data)
+    pred = rioxarray.open_rasterio(config.MODEL_OUTPUTS / f'{name}.tif', masked=True).squeeze('band', drop=True)
+    lidar = rioxarray.open_rasterio(config.DATA_DIR / output_label / f'{output_label}_tree_canopy_lidar.tif',
+                                    masked=True).squeeze('band', drop=True)
+
+    # same grid, not just the same shape
+    assert pred.shape == lidar.shape, 'prediction and lidar rasters differ in shape'
+    assert pred.rio.transform().almost_equals(lidar.rio.transform()), 'prediction and lidar grids are not aligned'
+    assert pred.rio.crs == lidar.rio.crs, 'prediction and lidar CRS differ'
+    for nm, r in (('prediction', pred), ('lidar', lidar)):          # both should be 0-100
+        mx = float(r.max())
+        assert mx > 1.5, f'{nm} raster max is {mx:.2f}; looks like 0-1 rather than 0-100'
+    os.makedirs(config.RESAMP, exist_ok=True)
+
+    valid = lidar.notnull() & pred.notnull()
+    p10 = pred.where(valid).values
+    l10 = lidar.where(valid).values
+
+    rows = [{'res': 10, **_metrics(l10.ravel(), p10.ravel()), 'mean_valid_px': 1.0}]
+    bias10, rmse10 = rows[0]['bias'], rows[0]['rmse']
+    sigma2 = rmse10 ** 2 - bias10 ** 2                     # variance of 10 m errors
+    rows[0]['rmse_indep'] = rmse10
+
+    for res in scales:
+        print(f'{res} meters')
+        assert res % 10 == 0, f'scale {res} m is not a multiple of 10 m'
+        factor = res // 10
+        coarsen = dict(x=factor, y=factor, boundary='pad')
+        lidar_sum = lidar.where(valid).fillna(0).coarsen(**coarsen).sum()
+        pred_sum = pred.where(valid).fillna(0).coarsen(**coarsen).sum()
+        n_valid = valid.astype('float32').coarsen(**coarsen).sum()
+
+        keep = n_valid >= min_coverage * factor ** 2
+        pred_c = (pred_sum / n_valid).where(keep).astype('float32')
+        lidar_c = (lidar_sum / n_valid).where(keep).astype('float32')
+
+        # metrics
+        pc, lc, nv = pred_c.values.ravel(), lidar_c.values.ravel(), n_valid.where(keep).values.ravel()
+        m = _metrics(lc, pc)
+        ok = np.isfinite(pc) & np.isfinite(lc)
+        mean_inv_n = float(np.mean(1.0 / nv[ok]))
+        rows.append({'res': res, **m, 'mean_valid_px': float(np.mean(nv[ok])),
+                     'rmse_indep': float(np.sqrt(bias10 ** 2 + sigma2 * mean_inv_n))})
+
+        # write rasters with correct georeferencing
+        if res in write_scales:
+            # rebuild georeference from source data rather than using the coords created by coarsen()
+            x, y, new_tf = _coarse_coords(pred, factor, pred_c.sizes['x'], pred_c.sizes['y'])
+            for arr, fname in ((pred_c, f'resamp_{res}_{name}.tif'),
+                               (lidar_c, f'resamp_{res}_{output_label}_tree_canopy_lidar.tif')):
+                arr = (arr.assign_coords(x=x, y=y)
+                          .rio.write_crs(pred.rio.crs)
+                          .rio.write_transform(new_tf)
+                          .rio.write_nodata(np.nan, encoded=False))
+                arr.rio.to_raster(config.RESAMP / fname, compress='lzw')
+
+    out = pd.DataFrame(rows)
+    out.to_csv(config.RESAMP / f'{name}.csv', index=False)
+
+    pred.close()
+    lidar.close()
+   
+def resample_only(output_label, model_label, OOF, train_features, scales,
+                          min_coverage=0.75):
+    """Aggregate 10 m predictions to coarser square grids.
+
+    Coarse cell value = mean over the 10 m pixels that are valid.
+    Cells with fewer than `min_coverage` x (pixels per cell) valid pixels are excluded.
+    """
+    t = '_OOF_' if OOF else '_'
+    name = f'{output_label}_canopy_from_{model_label}_{train_features}{t}model'
+    # masked=True turns each file's nodata value into NaN (otherwise e.g. -9999 counts as data)
+    pred = rioxarray.open_rasterio(config.MODEL_OUTPUTS / f'{name}.tif', masked=True).squeeze('band', drop=True)
+    
+    os.makedirs(config.RESAMP, exist_ok=True)
+
+    valid = pred.notnull()
+  
+    for res in scales:
+        print(f'{res} meters')
+        assert res % 10 == 0, f'scale {res} m is not a multiple of 10 m'
+        factor = res // 10
+        coarsen = dict(x=factor, y=factor, boundary='pad')
+        pred_sum = pred.where(valid).fillna(0).coarsen(**coarsen).sum()
+        n_valid = valid.astype('float32').coarsen(**coarsen).sum()
+
+        keep = n_valid >= min_coverage * factor ** 2
+        pred_c = (pred_sum / n_valid).where(keep).astype('float32')
+
+        # write rasters with correct georeferencing
+        
+        x, y, new_tf = _coarse_coords(pred, factor, pred_c.sizes['x'], pred_c.sizes['y'])
+      
+        arr = pred_c.assign_coords(x=x, y=y).rio.write_crs(pred.rio.crs).rio.write_transform(new_tf).rio.write_nodata(np.nan, encoded=False)
+        arr.rio.to_raster(config.RESAMP / f'resamp_{res}_{name}.tif', compress='lzw')
+
+    pred.close()
+
+   
