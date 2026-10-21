@@ -13,6 +13,8 @@ dependencies:
   - geopandas
   - shapely
   - opencv
+  - esda
+  - libpysal
 
   # Sentinel-2 access (Microsoft Planetary Computer)
   - pystac-client
