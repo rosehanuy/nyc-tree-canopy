@@ -25,7 +25,7 @@ dependencies:
 
   # arrays, storage, parallel processing
   - xarray
-  - zarr
+  - zarr>=2.18,<3
   - dask
   - distributed
   - bokeh            # needed for the Dask dashboard link printed by scripts 01-02
