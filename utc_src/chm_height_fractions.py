@@ -198,7 +198,10 @@ NEIGHBOR_PX = 5          # 5 x 5 pixels = 50 m window for the neighbourhood cano
 BLOCK_PX = 100           # 1 km blocks, matching the train/test split
 MIN_PIXELS, MIN_BLOCKS = 200, 10
 N_BOOT, SEED = 1000, 0
-MODEL_STYLE = [dict(color='#7A4FA3', ls='-', marker='o'), dict(color='#D07A2A', ls='--', marker='s')]
+c1 = '#285A48'
+c2 = '#8BBB92'
+c3 = '#3B9797'
+MODEL_STYLE = [dict(color=c1, desc= '(spring, summer, fall)'), dict(color=c3, desc='(summer, fall)'),dict(color=c2, desc='',ls='--', marker='s')]
 
 def _read(path, band=None):
     with rasterio.open(path) as src:
