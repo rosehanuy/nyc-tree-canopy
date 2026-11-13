@@ -206,7 +206,7 @@ def resample_and_evaluate(output_label, model_label, OOF, train_features, scales
     t = '_OOF_' if OOF else '_'
     name = f'{output_label}_canopy_from_{model_label}_{train_features}{t}model'
     # masked=True turns each file's nodata value into NaN (otherwise e.g. -9999 counts as data)
-    pred = rioxarray.open_rasterio(config.MODEL_OUTPUTS / f'{name}.tif', masked=True).squeeze('band', drop=True)
+    pred = rioxarray.open_rasterio(config.MODEL_OUTPUTS / train_features /f'{name}.tif', masked=True).squeeze('band', drop=True)
     lidar = rioxarray.open_rasterio(config.DATA_DIR / output_label / f'{output_label}_tree_canopy_lidar.tif',
                                     masked=True).squeeze('band', drop=True)
 
