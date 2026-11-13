@@ -180,16 +180,16 @@ def check_output(out_path, template_path, sample=200_000, seed=0):
 
 ########### evaluate model performance in different vegetation landscapes #############3
 
-# paths
-HEIGHT_FRACTIONS = config.DATA_DIR / 'nyc21' / 'nyc21_height_fractions.tif'            # from chm_height_fractions.py
-LIDAR_CANOPY = config.DATA_DIR / 'nyc21' / 'nyc21_tree_canopy_lidar.tif'                # reference canopy %
-PREDICTIONS = {                                                        # label -> OOF prediction raster
-    'Spring + Summer + Fall': config.MODEL_OUTPUTS /'nyc21_canopy_from_nyc21_all_seasons_OOF_model.tif',
-    'Growing season': config.MODEL_OUTPUTS /'nyc21_canopy_from_nyc21_median_season_only_OOF_model.tif',
-}
+# # paths
+# HEIGHT_FRACTIONS = config.DATA_DIR / 'nyc21' / 'nyc21_height_fractions.tif'            # from chm_height_fractions.py
+# LIDAR_CANOPY = config.DATA_DIR / 'nyc21' / 'nyc21_tree_canopy_lidar.tif'                # reference canopy %
+# PREDICTIONS = {                                                        # label -> OOF prediction raster
+#     'Spring + Summer + Fall': config.MODEL_OUTPUTS /'nyc21_canopy_from_nyc21_all_seasons_OOF_model.tif',
+#     'Growing season': config.MODEL_OUTPUTS /'nyc21_canopy_from_nyc21_median_season_only_OOF_model.tif',
+# }
 
-OUT_FIG = config.FIGURES / 'height_band_errors.png'
-OUT_CSV = config.models /'nyc21'/'height_band_errors.csv'
+# OUT_FIG = config.FIGURES / 'height_band_errors.png'
+# OUT_CSV = config.models /'nyc21'/'height_band_errors.csv'
 
 MAX_TREE = 0.05          # maximum amount of tree canopy allowed in pixels
 BIN_EDGES = np.array([0, 0.01, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.60])
@@ -222,18 +222,18 @@ def _neighbour_mean(a, size):
         return np.where(c > 0, s / c, np.nan)
  
  
-def load_pixels():
-    f, transform, shape = _read(HEIGHT_FRACTIONS)                 # lawn, shrub, short, tall, coverage
-    lidar, t2, s2 = _read(LIDAR_CANOPY, 1)
+def load_pixels(height_fractions,lidar_canopy,predictions):
+    f, transform, shape = _read(height_fractions)                 # lawn, shrub, short, tall, coverage
+    lidar, t2, s2 = _read(lidar_canopy, 1)
     if (t2, s2) != (transform, shape):
-        raise ValueError(f'{LIDAR_CANOPY} is not on the same grid as {HEIGHT_FRACTIONS}')
+        raise ValueError(f'{lidar_canopy} is not on the same grid as {height_fractions}')
     lidar = _to_pct(lidar)
     neighbour = _neighbour_mean(lidar, NEIGHBOR_PX)
     preds = {}
-    for name, path in PREDICTIONS.items():
+    for name, path in predictions.items():
         p, t3, s3 = _read(path, 1)
         if (t3, s3) != (transform, shape):
-            raise ValueError(f'{path} is not on the same grid as {HEIGHT_FRACTIONS}')
+            raise ValueError(f'{path} is not on the same grid as {height_fractions}')
         preds[name] = _to_pct(p)
  
     tree = f[2] + f[3]
@@ -260,19 +260,19 @@ def block_bootstrap_bins(values, bins, blocks, n_bins):
         mean = S.sum(0) / C.sum(0)
     lo, hi = np.nanquantile(boot, [0.025, 0.975], axis=0)
     return mean, lo, hi, C.sum(0), (C > 0).sum(0)
- 
- 
-def summarize(d):
-    m1, m2 = PREDICTIONS
+
+def summarize(d,predictions):
+    m1, m2, m3 = predictions
     n_bins = len(BIN_EDGES) - 1
     bins = np.clip(np.digitize(d['x'], BIN_EDGES[1:-1], right=True), 0, n_bins - 1)
     blocks = d['block'].to_numpy()
     stat = lambda v: block_bootstrap_bins(np.asarray(v, dtype=float), bins, blocks, n_bins)
  
     #res = {m: stat(d[m]) for m in (m1, m2)}
-    res = {m: stat(d[m] - d['lidar']) for m in (m1, m2)} ### get residual
-    calls = {m: stat((d[m] > 0) * 100) for m in (m1, m2)}
-    diff = stat((d[m2] - d['lidar']).abs() - (d[m1] - d['lidar']).abs())
+    res = {m: stat(d[m] - d['lidar']) for m in (m1, m2, m3)}
+    calls = {m: stat((d[m] > 0) * 100) for m in (m1, m2, m3)}
+    diff_3s = stat((d[m2] - d['lidar']).abs() - (d[m1] - d['lidar']).abs())
+    diff_2s = stat((d[m2] - d['lidar']).abs() - (d[m3] - d['lidar']).abs())
     lid, nbr = stat(d['lidar']), stat(d['neighbour'])
  
     n, nblk = res[m1][3], res[m1][4]
@@ -282,28 +282,34 @@ def summarize(d):
              'x': (BIN_EDGES[k] + BIN_EDGES[k + 1]) / 2, 'n_pixels': int(n[k]), 'n_blocks': int(nblk[k]),
              'plotted': bool(n[k] >= MIN_PIXELS and nblk[k] >= MIN_BLOCKS),
              'lidar_canopy': lid[0][k], f'neighbour_canopy_{NEIGHBOR_PX * 10}m': nbr[0][k]}
-        for m in (m1, m2):
+        for m in (m1, m2, m3):
             r[f'{m} | mean'], r[f'{m} | lo'], r[f'{m} | hi'] = (res[m][i][k] for i in range(3))
             r[f'{m} | % called canopy'] = calls[m][0][k]
-        r['diff | mean'], r['diff | lo'], r['diff | hi'] = (diff[i][k] for i in range(3))
+        r['diff_3s | mean'], r['diff_3s | lo'], r['diff_3s | hi'] = (diff_3s[i][k] for i in range(3))
+        r['diff_2s | mean'], r['diff_2s | lo'], r['diff_2s | hi'] = (diff_2s[i][k] for i in range(3))
             
         rows.append(r)
     return pd.DataFrame(rows)
- 
-def plot_shrub_fraction_error(t, fname=None):
- 
-    m1, m2 = PREDICTIONS
+
+def plot(t, predictions):
+    """Grouped bar chart: one group per shrub-share bin (bins evenly spaced and labelled, so their
+    different widths are explicit), one bar per model, 95% block-bootstrap CIs as error bars,
+    pixel count under each bin label, and a lawn -> shrub arrow under the axis."""
+    m1, m2, m3 = predictions
     t = t[t.plotted].reset_index(drop=True)
     n_bins = len(t)
     x = np.arange(n_bins)
-    w = 0.38
+    k = 3
+    group_width = 0.85
+    w = group_width / k # bar width
+    offsets = (np.arange(k) - (k - 1) / 2) * w
  
     fig, ax = plt.subplots(figsize=(9, 4.8))
-    for i, (m, st) in enumerate(zip((m1, m2), MODEL_STYLE)):
+    for i, (m, st) in enumerate(zip((m1, m3, m2), MODEL_STYLE)):
         mean = t[f'{m} | mean']
         err = np.vstack([mean - t[f'{m} | lo'], t[f'{m} | hi'] - mean])
-        ax.bar(x + (i - 0.5) * w, mean, w, color=st['color'], edgecolor='white', lw=1, label=f'{m} Model')
-        ax.errorbar(x + (i - 0.5) * w, mean, yerr=err, fmt='none', ecolor='0.25', elinewidth=1, capsize=3)
+        ax.bar(x + offsets[i], mean, w, color=st['color'], edgecolor='white', lw=1, label=f'{m} Model {st['desc']}')
+        ax.errorbar(x + offsets[i], mean, yerr=err, fmt='none', ecolor='0.25', elinewidth=1, capsize=3)
  
     labels = [f"{lo*100:g}–{hi*100:g}%\nn = {n:,}" for lo, hi, n in zip(t['bin_lo'], t['bin_hi'], t['n_pixels'])]
     ax.set_title('Overprediction of Tree Canopy in Shrub/Lawn Pixels')
@@ -335,6 +341,8 @@ def plot_shrub_fraction_error(t, fname=None):
                 arrowprops=dict(arrowstyle='-|>', color='0.45', lw=1.2), annotation_clip=False)
  
     plt.tight_layout()
-    plt.savefig(fname or OUT_FIG, dpi=300, bbox_inches='tight')
+
+    plt.savefig(config.FIGURES / 'height_band_errors.png', dpi=300, bbox_inches='tight')
     plt.show()
     plt.close()
+ 
