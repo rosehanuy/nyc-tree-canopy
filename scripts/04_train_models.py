@@ -5,12 +5,12 @@ import pandas as pd
 
 
 #### set inputs ########
-output_label= 'nyc18'
-feature_set_name = 'medians_only'
+output_label= 'nyc21'
+feature_set_name = 'summer_fall'
 
-#  The out_of_fold option is set to avoid data leakage when evaluating model performance. Set out_of_fold to True to train a series of models that hold out a different portion of the training data each time. This series of out_of_fold (OOF) models can then be deployed to make citywide predictions for the same year as the training data without data leakage.
+#  The out_of_fold option is set to avoid data leakage when evaluating model performance. Set out_of_fold to True to train a series of models that hold out a different portion of the training data each time. This series of out_of_fold (OOF) models can then be deployed to make citywide predictions on just the portion of data that was held out from training.
 
-# If you are not concerned with model evaluation on same-year data (e.g. you are going to make citywide predictions for different years than the training data), out_of_fold can be set set to False. In this case, only one model version will be trained using all the available train/test data.
+# If you are not concerned with model evaluation, out_of_fold can be set set to False. In this case, only one model version will be trained using all the available train/test data.
 
 out_of_fold = True
 k_folds = 5    ## number of out-of-fold models to train. only used if out_of_fold = True.
@@ -26,11 +26,26 @@ def main():
     all_training_data = pd.concat([train_clf,test_clf,train_rgr,test_rgr])
 
     #### define feature sets
-    band_cols = [c for c in train_clf.columns if c.startswith('band')]
-    feature_sets = {'all_vars': band_cols,
-                        'medians_only' :[c for c in band_cols if c.endswith('median')],
-                        'deltas_only':[c for c in band_cols if c.endswith('delta')],
-                        'median_season_only':[c for c in band_cols if c.endswith('season_median')]}
+    band_cols = [c for c in all_training_data.columns if c.startswith('band')]
+    
+    medians = [c for c in band_cols if c.endswith('median') and not c.endswith('season_median')]
+    seasons = ['spring', 'summer', 'fall']
+    season_sets = {s: [c for c in medians if c.endswith(f'{s}_median')] for s in seasons}
+
+    feature_sets = {
+           'spring': season_sets['spring'],
+           'summer': season_sets['summer'],
+           'fall':   season_sets['fall'],
+           'spring_summer': season_sets['spring'] + season_sets['summer'],
+           'spring_fall':   season_sets['spring'] + season_sets['fall'],
+           'summer_fall':   season_sets['summer'] + season_sets['fall'],
+           'three_seasons':   medians, # spring summer fall. previously called all_seasons
+           'all_vars': band_cols,
+           'all_seasons' :[c for c in band_cols if c.endswith('median')], # growing season, spring, summer, fall. previously called medians_only
+           'deltas_only':[c for c in band_cols if c.endswith('delta')],
+           'medians_deltas': [c for c in band_cols if c.endswith(('median','delta'))],
+           'iqr_only':       [c for c in band_cols if c.endswith('iqr')],
+           'growing_season':[c for c in band_cols if c.endswith('season_median')]} # previously called median_season_only
 
 
     features = feature_sets[feature_set_name]

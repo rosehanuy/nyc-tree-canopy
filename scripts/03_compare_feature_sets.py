@@ -44,16 +44,16 @@ def main():
         'spring_summer': season_sets['spring'] + season_sets['summer'],
         'spring_fall':   season_sets['spring'] + season_sets['fall'],
         'summer_fall':   season_sets['summer'] + season_sets['fall'],
-        'all_seasons':   medians,
+        'three_seasons':   medians, # spring summer fall  ## previously called all_seasons
         'all_vars': band_cols,
-        'medians_only' :[c for c in band_cols if c.endswith('median')],
+        'all_seasons' :[c for c in band_cols if c.endswith('median')], # growing season, spring, summer, fall. previously called medians_only
         'deltas_only':[c for c in band_cols if c.endswith('delta')],
         'medians_deltas': [c for c in band_cols if c.endswith(('median','delta'))],
         'iqr_only':       [c for c in band_cols if c.endswith('iqr')],
-        'median_season_only':[c for c in band_cols if c.endswith('season_median')]}
+        'growing_season':[c for c in band_cols if c.endswith('season_median')]} # previously called median_season_only
 
     # train model with each training year/feature set combination
-    #calculate relevant metric (auc, rmse, r2) for same year and other year with bootstrapped confidence interval
+    #calculate relevant metric (auc, rmse, r2) for same year and other year over 1000 bootstrapped test samples
     print(f'Training classifiers for {output_label_1}')
     compare_clf_models(feature_sets=feature_sets,output_label=output_label_1,train_df=train_clf_1,test_same_year=test_clf_1,test_other_year=test_clf_2,shap_n=shap_n)
 
@@ -74,17 +74,17 @@ def main():
     plot_shap_feature_importance(output_label=output_label_1,feature_sets=feature_sets)
     plot_shap_feature_importance(output_label=output_label_2,feature_sets=feature_sets)
 
-    season_groups = ['spring', 'summer', 'fall', 'spring_summer', 'spring_fall', 'summer_fall','all_seasons','median_season_only']
-    types   = ['all_vars', 'medians_only','deltas_only', 'iqr_only', 'medians_deltas']
+    # season_groups = ['spring', 'summer', 'fall', 'spring_summer', 'spring_fall', 'summer_fall','all_seasons','median_season_only']
+    # types   = ['all_vars', 'medians_only','deltas_only', 'iqr_only', 'medians_deltas']
 
-    diffs = compile_differences([output_label_1, output_label_2],
-                               {'all_seasons': season_groups, 'medians_only': types})
-    diffs.to_csv(config.MODELS / f'feature_set_differences_{output_label_1}_{output_label_2}.csv', index=False)
+    # diffs = compile_differences([output_label_1, output_label_2],
+    #                            {'all_seasons': season_groups, 'medians_only': types})
+    # diffs.to_csv(config.MODELS / f'feature_set_differences_{output_label_1}_{output_label_2}.csv', index=False)
 
-    ### add feature comparison bar plot
-    plot_feature_comparison(output_label_1=output_label_1,output_label_2=output_label_2,year_1=year_1,year_2=year_2,features_to_plot=season_groups,fname='seasongroups')
+    # ### add feature comparison bar plot
+    # plot_feature_comparison(output_label_1=output_label_1,output_label_2=output_label_2,year_1=year_1,year_2=year_2,features_to_plot=season_groups,fname='seasongroups')
 
-    plot_feature_comparison(output_label_1=output_label_1,output_label_2=output_label_2,year_1=year_1,year_2=year_2,features_to_plot=types,fname='typegroups')
+    # plot_feature_comparison(output_label_1=output_label_1,output_label_2=output_label_2,year_1=year_1,year_2=year_2,features_to_plot=types,fname='typegroups')
 
     print(f'Done.')     
 

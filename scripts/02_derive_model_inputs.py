@@ -15,15 +15,15 @@ import warnings
 warnings.filterwarnings('ignore', message='Sending large graph', category=UserWarning)
 
 ##### set input #######
-output_label = 'nyc21'
-year = 2021
+output_label = 'nyc19'
+year = 2019
 
 # if True, this will:
     # 1. derive input features from satellite data
     # 2. create a tree canopy layer from lidar landcover data
     # 3. create train/test datasets to train and validate a new model
 # If False, input features will be derived for use with an existing model. 
-train_new_model = True
+train_new_model = False
 
 ######################
 def main():

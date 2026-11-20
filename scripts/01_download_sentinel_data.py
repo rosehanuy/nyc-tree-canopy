@@ -12,8 +12,8 @@ import pandas as pd
  
 ###### set inputs ###################################
 
-output_label = 'nyc21'
-year = 2021
+output_label = 'nyc19'
+year = 2019
 
 ##################################################
 
