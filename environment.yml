@@ -15,6 +15,7 @@ dependencies:
   - opencv
   - esda
   - libpysal
+  - proj-data
 
   # Sentinel-2 access (Microsoft Planetary Computer)
   - pystac-client
@@ -28,12 +29,12 @@ dependencies:
   - zarr>=2.18,<3
   - dask
   - distributed
-  - bokeh            # needed for the Dask dashboard link printed by scripts 01-02
+  - bokeh            # needed for Dask dashboard 
   - pandas
-  - pyarrow          # for reading/writing the train/test .parquet files
+  - pyarrow          # for reading/writing .parquet files
   - tqdm
 
-  # modelling: scikit-learn pinned to the version that trained the published models
+  # modelling
   - scikit-learn=1.8.0
   - joblib
   - shap
