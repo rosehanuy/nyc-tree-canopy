@@ -23,6 +23,7 @@ import os
 from sklearn.metrics import mean_squared_error, r2_score
 import xarray as xr
 import rasterio
+import rioxarray
 
 
 from utc_src import config
@@ -240,9 +241,10 @@ def predict_tree_canopy(output_label,model_label, model_feature_set,out_of_fold)
     chunk_x = 256
 
     dest_name = f'{output_label}_canopy_from_{model_label}_{model_feature_set}_model.tif' if not out_of_fold else f'{output_label}_canopy_from_{model_label}_{model_feature_set}_OOF_model.tif'
+    os.makedirs(config.MODEL_OUTPUTS / model_feature_set, exist_ok=True)
 
     with rasterio.open(
-        config.MODEL_OUTPUTS / dest_name,
+        config.MODEL_OUTPUTS / model_feature_set / dest_name,
         'w', driver='GTiff', height=height, width=width,
         count=1, dtype=np.float32, crs=crs,
         transform=transform, compress='lzw'

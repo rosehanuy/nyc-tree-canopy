@@ -394,6 +394,7 @@ def aggregate_to_seasons(output_label):
 
     all_data = xr.open_zarr(config.DATA_DIR / output_label / f'{output_label}_daily_bandsandindices.zarr')['variables']
     #all_data = all_data.chunk({'time':-1,'band':-1,'y':256,'x':256})
+    np.save(config.DATA_DIR / output_label / f'{output_label}_acquisition_dates.npy',all_data.time.values)
     band_chunk = all_data.sizes['band']
     spatial_chunk = all_data.chunksizes['y'][0]
 

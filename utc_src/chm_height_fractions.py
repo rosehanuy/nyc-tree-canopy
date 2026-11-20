@@ -294,7 +294,7 @@ def summarize(d,predictions):
         rows.append(r)
     return pd.DataFrame(rows)
 
-def plot(t, predictions):
+def plot_shrub_fraction_error(t, predictions):
     """Grouped bar chart: one group per shrub-share bin (bins evenly spaced and labelled, so their
     different widths are explicit), one bar per model, 95% block-bootstrap CIs as error bars,
     pixel count under each bin label, and a lawn -> shrub arrow under the axis."""
